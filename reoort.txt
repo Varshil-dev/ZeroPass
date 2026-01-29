@@ -1,0 +1,95 @@
+# **Project Report: A Framework for Continuous Behavioral Authentication on Mobile Devices**
+
+**Author:** Gemini
+**Date:** October 16, 2025
+
+---
+
+### **Abstract**
+
+We provide a continuous behavioral authentication system designed specifically for mobile security. We initially establish a user's unique behavioral profile through a one-time enrollment process where the user performs a series of baseline activities like typing, swiping, and tapping. A suite of services built on the Expo framework is then used to define the user's unique patterns in successive interactions. We show that the suggested approach may correctly capture a rich dataset of behavioral biometrics, including keystroke dynamics, gesture velocity, and tap precision. When anomalous behavior is recognized, the system would immediately deliver signals to lock the session and guide the user. We believe this study is a comprehensive proof-of-concept that uses a multi-modal approach to create a robust framework for continuous authentication on mobile platforms.
+
+---
+
+### **Table of Contents**
+1.  Introduction
+2.  System Architecture and Design
+3.  Implementation Details
+4.  Results and Demonstration
+5.  Conclusion and Future Work
+
+---
+
+### **1. Introduction**
+
+In an era of increasing reliance on digital services, robust user authentication stands as the primary gatekeeper to sensitive data. Traditional authentication mechanisms, such as passwords, PINs, and even static biometrics like fingerprints, share a fundamental vulnerability: they are single, point-in-time checks. Once a user is authenticated, the system implicitly trusts that the session remains secure, leaving it exposed if the device is compromised.
+
+To address these limitations, this project explores a more dynamic paradigm: **continuous authentication through behavioral biometrics**. Instead of relying on what a user knows or is, this approach focuses on *how* a user behaves. It operates on the principle that each individual possesses a unique, consistent, and measurable pattern of interaction with their device. These patterns—encompassing typing rhythm, swipe gestures, and device motion—can be used to create a living digital signature.
+
+This project details the design and implementation of a proof-of-concept system for continuous behavioral authentication. The primary objective is to build a functional prototype capable of capturing a rich, multi-modal dataset of a user's behavioral patterns. The work covers the development of a cross-platform mobile application for data capture, a Python-based backend service for data ingestion, and the end-to-end data pipeline connecting them, laying the groundwork for a truly adaptive security system.
+
+### **2. System Architecture and Design**
+
+The system is designed using a client-server model, separating the concerns of data collection (client) from data storage and future analysis (server).
+
+**2.1. Client (Frontend)**
+The client is a mobile application built with **React Native** and the **Expo** framework, written in **TypeScript**. This choice allows for cross-platform deployment (iOS, Android, and Web) from a single codebase. The client's architecture is composed of three main layers:
+
+*   **UI Components:** A set of screens, built with standard React Native components, that guide the user through the enrollment and authentication experiences. Navigation between screens is handled by `expo-router`.
+*   **Enrollment Workflow:** A series of dedicated components (`/app/enrollment/*.tsx`) that present specific tasks to the user (typing, swiping, tapping, motion) and capture the relevant data for each.
+*   **Core Services:**
+    *   `sensorService.ts`: A singleton service that abstracts the use of `expo-sensors` (Accelerometer, Gyroscope) and `expo-location`. It provides simple methods (`startRecording`, `stopRecording`) to manage the collection of raw sensor data.
+    *   `apiService.ts`: Handles all communication with the backend. It defines the data structures (`EnrollmentPayload`, `AuthPayload`) and manages the serialization of data into JSON for HTTP POST requests.
+    *   `continuousAuthService.ts`: The engine for the monitoring phase. It uses `setInterval` to periodically (every 10 seconds) bundle background touch events and sensor data and send it to the backend for authentication checks.
+
+**2.2. Server (Backend)**
+The backend is a lightweight web server built with **Python** and the **FastAPI** framework. Its role in this prototype is intentionally simple: to act as a data ingestion point. It exposes a single primary endpoint:
+
+*   `/api/save-payload`: This endpoint accepts HTTP POST requests containing the JSON-serialized enrollment data from the client. Upon receipt, it validates the payload, creates a `saved_payloads/` directory if one does not exist, and writes the entire JSON object to a file named `enrollment_payload_{userId}.json`. This design effectively simulates the data storage step required before any machine learning model training can occur.
+
+### **3. Implementation Details**
+
+**3.1. Enrollment Phase**
+The enrollment process is critical for establishing a high-quality baseline profile. The user is guided through four distinct modules:
+1.  **Typing Test (`typing.tsx`):** The user is prompted to type the pangram "The quick brown fox jumps over the lazy dog" twice. Event handlers capture `pressTime` and `releaseTime` for each key, from which `holdTime` and `interKeyDelay` are calculated.
+2.  **Swipe Test (`swipe.tsx`):** The user must swipe three times in each of the four cardinal directions (right, down, left, up). The `PanResponder` API is used to capture the start/end coordinates, duration, distance, and velocity of each gesture.
+3.  **Tap Reaction Test (`tap.tsx`):** Ten circular targets appear at random locations and intervals. The application records the `reactionTime` (time from target appearance to tap) and the `distance` from the tap coordinates to the target's center.
+4.  **Motion Test (`motion.tsx`):** The user is asked to hold their device naturally for 10 seconds. During this time, the `sensorService` records a continuous stream of accelerometer and gyroscope data to model the user's unique device handling pattern.
+
+**3.2. Data Aggregation and Transmission**
+Upon completion of the final enrollment step, the `enrollment/complete.tsx` component aggregates the data from all previous steps, which was passed via navigation parameters. It constructs a single `EnrollmentPayload` object, which includes the typing, swipe, tap, and motion data, along with context like location and a timestamp. This object is then passed to the `apiService`, which uses the `fetch` API to send it to the backend as a JSON string in the body of a POST request.
+
+**3.3. Continuous Monitoring**
+After enrollment, the user enters the `authenticated.tsx` screen, which activates the `continuousAuthService`. This service starts background recording of sensor data and touch events. Every 10 seconds, it packages the collected data into an `AuthPayload` and sends it to the (not-yet-implemented) `/api/auth` endpoint. In the prototype, it simulates a response and triggers a lockout via a callback if an anomaly is detected, demonstrating the intended reactive nature of the system.
+
+### **4. Results and Demonstration**
+
+The project successfully resulted in a functional, end-to-end prototype that meets the primary objective of creating a robust data collection framework.
+
+*   **Functional Application:** A complete React Native application was developed that successfully guides users through a multi-modal enrollment process and simulates a continuous monitoring environment.
+*   **End-to-End Data Pipeline:** The system demonstrates a working data pipeline. The client application captures complex behavioral data, serializes it, and transmits it to the backend server, which successfully receives and stores the data on the file system.
+*   **Rich Data Collection:** The system captures a detailed and structured dataset, suitable for training a machine learning model. A sample of the stored JSON payload for a user's enrollment is structured as follows:
+    ```json
+    {
+      "userId": "user_1665900000000",
+      "typingData": { "attempts": [...], "sensorData": {...} },
+      "swipeData": { "swipes": [...], "sensorData": {...} },
+      "tapData": { "taps": [...], "sensorData": {...} },
+      "motionData": { "sensorData": {...}, "duration": 10 },
+      "context": { "location": {...}, "timestamp": 1665900000000 }
+    }
+    ```
+*   **Responsive Security Mechanism:** The implemented lockout mechanism (`lock.tsx`) effectively demonstrates the intended user experience in response to a detected anomaly, terminating the session and requiring re-authentication.
+
+### **5. Conclusion and Future Work**
+
+**5.1. Conclusion**
+This project successfully demonstrates the feasibility of building a comprehensive framework for collecting multi-modal behavioral biometrics on mobile devices. It delivers a functional proof-of-concept that includes a client application for data capture, a backend for data ingestion, and the complete pipeline connecting them. The primary goal—to create a rich dataset for the purpose of training a continuous authentication model—has been fully achieved.
+
+**5.2. Future Work**
+This project lays the foundation for several critical future extensions:
+*   **Machine Learning Model Development:** The collected JSON data should be used to train and evaluate various anomaly detection models (e.g., LSTMs, Autoencoders, Isolation Forests) to find the most effective one for identifying behavioral deviations.
+*   **Implement Authentication API:** The `/api/auth` endpoint on the FastAPI server must be implemented. This endpoint will load the trained model and use it to score incoming behavioral data from the client in real-time, returning a JSON response indicating whether an anomaly was detected.
+*   **Performance Optimization:** The background services on the client should be profiled and optimized to minimize their impact on battery life and application performance.
+*   **Security Hardening:** Implement end-to-end encryption (e.g., HTTPS) for data in transit and encryption-at-rest for the stored biometric profiles on the server.
+*   **Expansion of Biometric Modalities:** The framework could be extended to include other behavioral indicators, such as voice patterns or gait analysis (if the user is walking).
