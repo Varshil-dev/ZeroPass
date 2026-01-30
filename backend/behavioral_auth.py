@@ -178,8 +178,10 @@ class BehavioralAuth:
         confidence = float(np.mean(scores))
         authenticated = confidence >= 0.6
 
-        return {
+        result = {
             "authenticated": authenticated,
             "confidence": confidence,
             "scores": scores
         }
+        print('[One-Shot Auth] Result:', result)
+        return result

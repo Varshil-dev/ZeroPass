@@ -22,6 +22,7 @@ export interface AuthPayload {
 }
 
 export interface AuthResponse {
+  authenticated: boolean;
   anomaly: boolean;
   confidence?: number;
   message?: string;
@@ -29,7 +30,7 @@ export interface AuthResponse {
 
 // ⚠️ Replace with your computer’s LAN IP (not localhost)
 // Example: 192.168.1.10 or 10.0.2.2 for emulator
-const API_BASE_URL = "http://192.168.1.140:3001"; // <--- CHANGE THIS
+const API_BASE_URL = "http://192.168.1.140:8000"; // <--- CHANGE THIS
 
 class ApiService {
   async sendTrainingData(payload: EnrollmentPayload): Promise<boolean> {
@@ -54,7 +55,7 @@ class ApiService {
 
   async sendAuthData(payload: AuthPayload): Promise<AuthResponse> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth`, { //contious auth
+      const response = await fetch(`${API_BASE_URL}/api/authenticate`, { //contious auth
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -65,10 +66,31 @@ class ApiService {
       if (!response.ok) throw new Error("Authentication check failed");
 
       const data = await response.json();
+      console.log('[One-Shot Auth] Result:', data);
       return data;
     } catch (error) {
       console.error("❌ Error sending auth data:", error);
       return { anomaly: false, message: "Network error" };
+    }
+  }
+
+  async sendContinuousAuthData(payload: AuthPayload): Promise<AuthResponse> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/continuous-auth`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) throw new Error("Continuous auth check failed");
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("❌ Error sending continuous auth data:", error);
+      return { authenticated: true, anomaly: false, message: "Network error (defaulting to authenticated)" };
     }
   }
 }

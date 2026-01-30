@@ -15,7 +15,7 @@ class ContinuousAuthModel:
         # -------------------------------
         try:
             self.svm_motion = joblib.load(
-                os.path.join(base_dir, "models/motion/svm_motion.pkl")
+                os.path.join(base_dir, "models/motion/motion_osvm.pkl")
             )
             self.motion_enabled = True
         except Exception:
@@ -26,7 +26,7 @@ class ContinuousAuthModel:
         # -------------------------------
         try:
             self.svm_touch = joblib.load(
-                os.path.join(base_dir, "models/gesture/svm_touch.pkl")
+                os.path.join(base_dir, "models/gesture/swipe_svm.pkl")
             )
             self.touch_enabled = True
         except Exception:
@@ -79,15 +79,19 @@ class ContinuousAuthModel:
         # ---------- Motion ----------
         if self.motion_enabled and payload.get("motionData"):
             motion_feat = self._motion_features(payload["motionData"])
+            print("Motion features:", motion_feat)
             if motion_feat is not None:
                 pred = self.svm_motion.predict([motion_feat])[0]
+                print("Motion prediction:", pred)
                 votes.append(pred == user_id)
 
         # ---------- Touch ----------
         if self.touch_enabled and payload.get("touchEvents"):
             touch_feat = self._touch_features(payload["touchEvents"])
+            print("Touch features:", touch_feat)
             if touch_feat is not None:
                 pred = self.svm_touch.predict([touch_feat])[0]
+                print("Touch prediction:", pred)
                 votes.append(pred == user_id)
 
         # ---------- Final Decision ----------
@@ -103,9 +107,11 @@ class ContinuousAuthModel:
         confidence = sum(votes) / len(votes)
         authenticated = confidence >= 0.6
 
-        return {
+        result = {
             "authenticated": authenticated,
             "anomaly": not authenticated,
             "confidence": confidence,
             "votes": votes,
         }
+        print('[Continuous Auth] Result:', result)
+        return result

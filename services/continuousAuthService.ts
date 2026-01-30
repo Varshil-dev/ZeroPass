@@ -15,21 +15,30 @@ class ContinuousAuthService {
   private isMonitoring = false;
   private userId: string = '';
   private onAnomalyDetected: (() => void) | null = null;
+  private onAuthenticationUpdate:
+  ((authenticated: boolean, confidence: number) => void) | null = null;
 
-  startMonitoring(userId: string, onAnomalyCallback: () => void) {
-    if (this.isMonitoring) return;
 
-    this.userId = userId;
-    this.onAnomalyDetected = onAnomalyCallback;
-    this.isMonitoring = true;
-    this.touchEvents = [];
+  startMonitoring(
+  userId: string,
+  onAnomalyCallback: () => void,
+  onAuthUpdate?: (authenticated: boolean, confidence: number) => void
+) {
+  if (this.isMonitoring) return;
 
-    sensorService.startRecording();
+  this.userId = userId;
+  this.onAnomalyDetected = onAnomalyCallback;
+  this.onAuthenticationUpdate = onAuthUpdate ?? null;
+  this.isMonitoring = true;
+  this.touchEvents = [];
 
-    this.authInterval = setInterval(() => {
-      this.performAuthCheck();
-    }, 10000);
-  }
+  sensorService.startRecording();
+
+  this.authInterval = setInterval(() => {
+    this.performAuthCheck();
+  }, 10000);
+}
+
 
   stopMonitoring() {
     if (!this.isMonitoring) return;
@@ -78,12 +87,20 @@ class ContinuousAuthService {
       },
     };
 
-    const response = await apiService.sendAuthData(payload);
+    const result = await apiService.sendContinuousAuthData(payload);
+    console.log('[Continuous Auth] Result:', result);
+    if (this.onAuthenticationUpdate) {
+  this.onAuthenticationUpdate(
+    result.authenticated,
+    result.confidence ?? 0
+  );
+}
 
-    if (response.anomaly && this.onAnomalyDetected) {
-      this.stopMonitoring();
-      this.onAnomalyDetected();
-    }
+    if (result.anomaly && this.onAnomalyDetected) {
+  this.stopMonitoring();
+  this.onAnomalyDetected();
+}
+
 
     this.touchEvents = [];
     sensorService.clearData();
