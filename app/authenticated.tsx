@@ -1,25 +1,72 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   TextInput,
   ScrollView,
+  Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Shield, Lock } from 'lucide-react-native';
+import {
+  Shield,
+  Lock,
+  Activity,
+  Eye,
+  Unlock,
+  AlertTriangle,
+} from 'lucide-react-native';
+import { useTheme } from '@/contexts/ThemeContext';
+import { Card, StatusIndicator } from '@/components/UIComponents';
+import { spacing, typography, borderRadius } from '@/theme/theme';
 import continuousAuthService from '@/services/continuousAuthService';
 
 export default function AuthenticatedScreen() {
   const router = useRouter();
+  const { theme } = useTheme();
+
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [text, setText] = useState('');
+  const [trustScore, setTrustScore] = useState(98);
+
+  const pulseAnim = React.useRef(new Animated.Value(1)).current;
+  const fadeAnim = React.useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     startMonitoring();
 
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 800,
+      useNativeDriver: true,
+    }).start();
+
+    // Pulse animation for shield
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.05,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    // Simulate trust score fluctuation
+    const interval = setInterval(() => {
+      setTrustScore((prev) => {
+        const change = Math.random() * 4 - 2;
+        return Math.max(90, Math.min(100, prev + change));
+      });
+    }, 3000);
+
     return () => {
+      clearInterval(interval);
       continuousAuthService.stopMonitoring();
     };
   }, []);
@@ -45,130 +92,459 @@ export default function AuthenticatedScreen() {
     });
   };
 
+  const getTrustColor = () => {
+    if (trustScore >= 95) return theme.accent.success;
+    if (trustScore >= 85) return theme.accent.warning;
+    return theme.accent.danger;
+  };
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.header}>
-        <Shield size={48} color="#34C759" />
-        <Text style={styles.title}>Authenticated Mode</Text>
-        <View style={styles.statusBadge}>
-          <View style={styles.statusDot} />
-          <Text style={styles.statusText}>Monitoring Active</Text>
+    <ScrollView
+      style={[styles.container, { backgroundColor: theme.background.primary }]}
+      contentContainerStyle={styles.contentContainer}
+    >
+      <Animated.View
+        style={[
+          styles.content,
+          {
+            opacity: fadeAnim,
+          },
+        ]}
+      >
+        {/* Hero Section */}
+        <View style={styles.heroSection}>
+          <Animated.View
+            style={[
+              styles.shieldContainer,
+              {
+                backgroundColor: theme.accent.success + '15',
+                transform: [{ scale: pulseAnim }],
+              },
+            ]}
+          >
+            <Shield
+              size={64}
+              color={theme.accent.success}
+              strokeWidth={2}
+              fill={theme.accent.success + '40'}
+            />
+          </Animated.View>
+
+          <Text style={[styles.title, { color: theme.text.primary }]}>
+            Protected Session
+          </Text>
+
+          <View
+            style={[
+              styles.statusBadge,
+              {
+                backgroundColor: theme.accent.success + '20',
+                borderColor: theme.accent.success + '40',
+              },
+            ]}
+          >
+            <StatusIndicator status="active" size={10} />
+            <Text style={[styles.statusText, { color: theme.accent.success }]}>
+              Actively Monitoring
+            </Text>
+          </View>
         </View>
-      </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Continuous Authentication</Text>
-        <Text style={styles.cardText}>
-          Your behavior is being continuously monitored in the background. The
-          system analyzes your typing patterns, touch gestures, and device motion
-          to ensure it's really you.
-        </Text>
-      </View>
+        {/* Trust Score */}
+        <Card variant="elevated" style={styles.trustCard}>
+          <View style={styles.trustHeader}>
+            <View style={styles.trustTitleRow}>
+              <Eye size={24} color={theme.accent.primary} />
+              <Text style={[styles.trustTitle, { color: theme.text.primary }]}>
+                Trust Score
+              </Text>
+            </View>
+            <Text style={[styles.trustValue, { color: getTrustColor() }]}>
+              {trustScore.toFixed(1)}%
+            </Text>
+          </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Try typing something:</Text>
-        <TextInput
-          style={styles.input}
-          value={text}
-          onChangeText={handleTextChange}
-          placeholder="Type here to test authentication..."
-          multiline
-        />
-      </View>
+          <View style={styles.trustBarContainer}>
+            <View
+              style={[
+                styles.trustBarBackground,
+                { backgroundColor: theme.border.primary },
+              ]}
+            >
+              <Animated.View
+                style={[
+                  styles.trustBarFill,
+                  {
+                    backgroundColor: getTrustColor(),
+                    width: `${trustScore}%`,
+                  },
+                ]}
+              />
+            </View>
+          </View>
 
-      <View style={styles.infoCard}>
-        <Lock size={24} color="#007AFF" />
-        <Text style={styles.infoText}>
-          If anomalous behavior is detected, you'll be locked out automatically
-        </Text>
-      </View>
+          <Text style={[styles.trustDescription, { color: theme.text.tertiary }]}>
+            Real-time behavioral confidence level
+          </Text>
+        </Card>
+
+        {/* Monitoring Features */}
+        <View style={styles.featuresGrid}>
+          <Card variant="outlined" style={styles.featureCard}>
+            <View
+              style={[
+                styles.featureIcon,
+                { backgroundColor: theme.accent.primary + '20' },
+              ]}
+            >
+              <Activity size={20} color={theme.accent.primary} />
+            </View>
+            <Text style={[styles.featureTitle, { color: theme.text.primary }]}>
+              Typing Patterns
+            </Text>
+            <StatusIndicator status="active" text="Tracking" size={6} />
+          </Card>
+
+          <Card variant="outlined" style={styles.featureCard}>
+            <View
+              style={[
+                styles.featureIcon,
+                { backgroundColor: theme.accent.secondary + '20' },
+              ]}
+            >
+              <Unlock size={20} color={theme.accent.secondary} />
+            </View>
+            <Text style={[styles.featureTitle, { color: theme.text.primary }]}>
+              Touch Gestures
+            </Text>
+            <StatusIndicator status="active" text="Tracking" size={6} />
+          </Card>
+
+          <Card variant="outlined" style={styles.featureCard}>
+            <View
+              style={[
+                styles.featureIcon,
+                { backgroundColor: theme.accent.success + '20' },
+              ]}
+            >
+              <Shield size={20} color={theme.accent.success} />
+            </View>
+            <Text style={[styles.featureTitle, { color: theme.text.primary }]}>
+              Device Motion
+            </Text>
+            <StatusIndicator status="active" text="Tracking" size={6} />
+          </Card>
+        </View>
+
+        {/* Interactive Test Area */}
+        <Card variant="elevated" style={styles.testCard}>
+          <Text style={[styles.testTitle, { color: theme.text.primary }]}>
+            Test Authentication
+          </Text>
+          <Text style={[styles.testDescription, { color: theme.text.secondary }]}>
+            Type naturally to see continuous authentication in action
+          </Text>
+
+          <View
+            style={[
+              styles.inputContainer,
+              { backgroundColor: theme.background.tertiary },
+            ]}
+          >
+            <TextInput
+              style={[styles.input, { color: theme.text.primary }]}
+              value={text}
+              onChangeText={handleTextChange}
+              placeholder="Start typing here..."
+              placeholderTextColor={theme.text.tertiary}
+              multiline
+            />
+          </View>
+
+          {text.length > 0 && (
+            <View style={styles.inputStats}>
+              <View style={styles.inputStat}>
+                <Text style={[styles.inputStatValue, { color: theme.accent.primary }]}>
+                  {text.length}
+                </Text>
+                <Text style={[styles.inputStatLabel, { color: theme.text.tertiary }]}>
+                  characters
+                </Text>
+              </View>
+              <View style={styles.inputStat}>
+                <Text
+                  style={[styles.inputStatValue, { color: theme.accent.success }]}
+                >
+                  ✓
+                </Text>
+                <Text style={[styles.inputStatLabel, { color: theme.text.tertiary }]}>
+                  verified
+                </Text>
+              </View>
+            </View>
+          )}
+        </Card>
+
+        {/* Security Info */}
+        <Card
+          variant="glass"
+          style={[
+            styles.infoCard,
+            {
+              backgroundColor: theme.accent.warning + '10',
+              borderColor: theme.accent.warning + '30',
+            },
+          ]}
+        >
+          <View style={styles.infoHeader}>
+            <Lock size={20} color={theme.accent.warning} />
+            <Text style={[styles.infoTitle, { color: theme.accent.warning }]}>
+              Automatic Protection
+            </Text>
+          </View>
+          <Text style={[styles.infoText, { color: theme.text.secondary }]}>
+            If anomalous behavior is detected, you'll be automatically logged out for
+            your security.
+          </Text>
+        </Card>
+
+        {/* How it Works */}
+        <Card variant="outlined" style={styles.howItWorksCard}>
+          <Text style={[styles.howItWorksTitle, { color: theme.text.primary }]}>
+            How It Works
+          </Text>
+
+          <View style={styles.stepsList}>
+            {[
+              {
+                icon: <Activity size={20} color={theme.accent.primary} />,
+                title: 'Continuous Analysis',
+                description: 'Every interaction is analyzed in real-time',
+              },
+              {
+                icon: <Shield size={20} color={theme.accent.success} />,
+                title: 'Pattern Matching',
+                description: 'Compared against your unique behavioral signature',
+              },
+              {
+                icon: <AlertTriangle size={20} color={theme.accent.warning} />,
+                title: 'Anomaly Detection',
+                description: 'Suspicious behavior triggers automatic lockout',
+              },
+            ].map((step, index) => (
+              <View key={index} style={styles.stepItem}>
+                <View
+                  style={[
+                    styles.stepIcon,
+                    { backgroundColor: theme.background.tertiary },
+                  ]}
+                >
+                  {step.icon}
+                </View>
+                <View style={styles.stepContent}>
+                  <Text style={[styles.stepTitle, { color: theme.text.primary }]}>
+                    {step.title}
+                  </Text>
+                  <Text
+                    style={[styles.stepDescription, { color: theme.text.secondary }]}
+                  >
+                    {step.description}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </Card>
+      </Animated.View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flexGrow: 1,
-    backgroundColor: '#f5f5f5',
-    padding: 20,
+    flex: 1,
   },
-  header: {
+  contentContainer: {
+    flexGrow: 1,
+    padding: spacing.lg,
+    paddingTop: spacing.xxxl,
+  },
+  content: {
+    gap: spacing.lg,
+  },
+  heroSection: {
     alignItems: 'center',
-    marginTop: 60,
-    marginBottom: 32,
+    marginBottom: spacing.md,
+  },
+  shieldContainer: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
   },
   title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginTop: 16,
-    marginBottom: 16,
+    ...typography.h1,
+    marginBottom: spacing.md,
+    textAlign: 'center',
   },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.full,
     borderWidth: 2,
-    borderColor: '#34C759',
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#34C759',
-    marginRight: 8,
   },
   statusText: {
-    fontSize: 14,
+    ...typography.bodySmall,
     fontWeight: '600',
-    color: '#34C759',
   },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+  trustCard: {
+    padding: spacing.xl,
   },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1a1a1a',
-    marginBottom: 12,
+  trustHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
   },
-  cardText: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 21,
-  },
-  input: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    minHeight: 100,
-    textAlignVertical: 'top',
-  },
-  infoCard: {
+  trustTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#e3f2fd',
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 8,
+    gap: spacing.sm,
+  },
+  trustTitle: {
+    ...typography.h3,
+  },
+  trustValue: {
+    fontSize: 36,
+    fontWeight: '800',
+    letterSpacing: -1,
+  },
+  trustBarContainer: {
+    marginBottom: spacing.md,
+  },
+  trustBarBackground: {
+    height: 12,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  trustBarFill: {
+    height: '100%',
+    borderRadius: 6,
+  },
+  trustDescription: {
+    ...typography.caption,
+    textAlign: 'center',
+  },
+  featuresGrid: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  featureCard: {
+    flex: 1,
+    padding: spacing.md,
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  featureIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: borderRadius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  featureTitle: {
+    ...typography.caption,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  testCard: {
+    padding: spacing.xl,
+  },
+  testTitle: {
+    ...typography.h2,
+    marginBottom: spacing.sm,
+  },
+  testDescription: {
+    ...typography.body,
+    marginBottom: spacing.lg,
+  },
+  inputContainer: {
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    minHeight: 120,
+  },
+  input: {
+    ...typography.body,
+    textAlignVertical: 'top',
+    minHeight: 100,
+  },
+  inputStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: spacing.lg,
+  },
+  inputStat: {
+    alignItems: 'center',
+  },
+  inputStatValue: {
+    ...typography.h2,
+    fontWeight: '800',
+  },
+  inputStatLabel: {
+    ...typography.caption,
+  },
+  infoCard: {
+    padding: spacing.lg,
+    borderWidth: 1,
+  },
+  infoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  infoTitle: {
+    ...typography.h3,
   },
   infoText: {
+    ...typography.bodySmall,
+    lineHeight: 20,
+  },
+  howItWorksCard: {
+    padding: spacing.xl,
+  },
+  howItWorksTitle: {
+    ...typography.h2,
+    marginBottom: spacing.lg,
+  },
+  stepsList: {
+    gap: spacing.lg,
+  },
+  stepItem: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  stepIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: borderRadius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepContent: {
     flex: 1,
-    fontSize: 14,
-    color: '#007AFF',
-    marginLeft: 12,
-    lineHeight: 21,
+  },
+  stepTitle: {
+    ...typography.h3,
+    marginBottom: spacing.xs,
+  },
+  stepDescription: {
+    ...typography.bodySmall,
+    lineHeight: 20,
   },
 });

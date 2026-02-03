@@ -100,7 +100,7 @@ class ContinuousAuthModel:
             return {
                 "authenticated": True,
                 "anomaly": False,
-                "confidence": 1.0,
+                "confidence": 1,
                 "reason": "Insufficient data"
             }
 

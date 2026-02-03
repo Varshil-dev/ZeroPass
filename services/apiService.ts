@@ -30,7 +30,7 @@ export interface AuthResponse {
 
 // ⚠️ Replace with your computer’s LAN IP (not localhost)
 // Example: 192.168.1.10 or 10.0.2.2 for emulator
-const API_BASE_URL = "http://192.168.1.140:8000"; // <--- CHANGE THIS
+const API_BASE_URL = "http://10.69.48.226:8000"; // <--- CHANGE THIS
 
 class ApiService {
   async sendTrainingData(payload: EnrollmentPayload): Promise<boolean> {

@@ -10,7 +10,7 @@ export interface TouchEvent {
 }
 
 class ContinuousAuthService {
-  private touchEvents: TouchEvent[] = [];
+  private   touchEvents: TouchEvent[] = [];
   private authInterval: NodeJS.Timeout | null = null;
   private isMonitoring = false;
   private userId: string = '';

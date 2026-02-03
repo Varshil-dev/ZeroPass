@@ -5,9 +5,19 @@ import {
   StyleSheet,
   TouchableOpacity,
   PanResponder,
+  Animated,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ChevronRight, ChevronDown, ChevronLeft, ChevronUp } from 'lucide-react-native';
+import {
+  ChevronRight,
+  ChevronDown,
+  ChevronLeft,
+  ChevronUp,
+  Move,
+} from 'lucide-react-native';
+import { useTheme } from '@/contexts/ThemeContext';
+import { Button, Card, ProgressBar, Badge } from '@/components/UIComponents';
+import { spacing, typography, borderRadius } from '@/theme/theme';
 import sensorService from '@/services/sensorService';
 
 interface SwipeData {
@@ -28,34 +38,63 @@ const REQUIRED_SWIPES = 3;
 export default function SwipeTestScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { theme } = useTheme();
 
   const [currentDirection, setCurrentDirection] = useState(0);
   const [swipeCount, setSwipeCount] = useState(0);
   const [swipeData, setSwipeData] = useState<SwipeData[]>([]);
   const [isRecording, setIsRecording] = useState(false);
+  const [lastSwipeSpeed, setLastSwipeSpeed] = useState<number | null>(null);
 
-  // Refs that keep latest values for handlers (avoid stale closure)
   const isRecordingRef = useRef(isRecording);
   const currentDirectionRef = useRef(currentDirection);
   const swipeCountRef = useRef(swipeCount);
   const swipeDataRef = useRef<SwipeData[]>(swipeData);
 
-  useEffect(() => { isRecordingRef.current = isRecording; }, [isRecording]);
-  useEffect(() => { currentDirectionRef.current = currentDirection; }, [currentDirection]);
-  useEffect(() => { swipeCountRef.current = swipeCount; }, [swipeCount]);
-  useEffect(() => { swipeDataRef.current = swipeData; }, [swipeData]);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const swipeIndicatorAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
+  useEffect(() => {
+    currentDirectionRef.current = currentDirection;
+  }, [currentDirection]);
+  useEffect(() => {
+    swipeCountRef.current = swipeCount;
+  }, [swipeCount]);
+  useEffect(() => {
+    swipeDataRef.current = swipeData;
+  }, [swipeData]);
+
+  useEffect(() => {
+    if (isRecording) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.1,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    }
+  }, [isRecording]);
 
   const startPos = useRef({ x: 0, y: 0, time: 0 });
 
   const panResponder = useRef(
     PanResponder.create({
-      // only start responder when recording
       onStartShouldSetPanResponder: () => isRecordingRef.current,
       onMoveShouldSetPanResponder: () => isRecordingRef.current,
 
       onPanResponderGrant: (evt, gestureState) => {
         if (!isRecordingRef.current) return;
-        // use gestureState.x0/y0 for initial touch (more reliable)
         startPos.current = {
           x: (gestureState.x0 ?? evt.nativeEvent.pageX) as number,
           y: (gestureState.y0 ?? evt.nativeEvent.pageY) as number,
@@ -66,7 +105,6 @@ export default function SwipeTestScreen() {
       onPanResponderRelease: (evt, gestureState) => {
         if (!isRecordingRef.current) return;
 
-        // Prefer gestureState.moveX/moveY for end location
         const endX = (gestureState.moveX ?? evt.nativeEvent.pageX) as number;
         const endY = (gestureState.moveY ?? evt.nativeEvent.pageY) as number;
         const duration = Date.now() - startPos.current.time;
@@ -85,7 +123,6 @@ export default function SwipeTestScreen() {
 
         const expectedDirection = DIRECTIONS[currentDirectionRef.current];
 
-        // only accept sufficiently large swipe and correct direction
         if (detectedDirection === expectedDirection && distance > 50) {
           const swipe: SwipeData = {
             direction: detectedDirection,
@@ -99,34 +136,41 @@ export default function SwipeTestScreen() {
             timestamp: Date.now(),
           };
 
-          // update swipeData (use functional update + ref sync)
-          setSwipeData(prev => {
+          setLastSwipeSpeed(speed);
+
+          // Animate success feedback
+          Animated.sequence([
+            Animated.timing(swipeIndicatorAnim, {
+              toValue: 1,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+            Animated.timing(swipeIndicatorAnim, {
+              toValue: 0,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+          ]).start();
+
+          setSwipeData((prev) => {
             const next = [...prev, swipe];
             swipeDataRef.current = next;
             return next;
           });
 
-          // update counts using refs (avoid stale closure)
           const newCount = (swipeCountRef.current ?? 0) + 1;
           setSwipeCount(newCount);
           swipeCountRef.current = newCount;
 
-          // if required swipes for this direction completed
           if (newCount >= REQUIRED_SWIPES) {
             if (currentDirectionRef.current < DIRECTIONS.length - 1) {
               const nextDir = currentDirectionRef.current + 1;
               setCurrentDirection(nextDir);
               currentDirectionRef.current = nextDir;
-
-              // reset count for next direction
               setSwipeCount(0);
               swipeCountRef.current = 0;
             } else {
-              // final direction completed — finalize
-              // ensure the last swipe is included (we already added it)
-              const finalSwipeData = swipeDataRef.current;
-              // small timeout to let UI update before navigation if desired
-              handleComplete(finalSwipeData);
+              handleComplete(swipeDataRef.current);
             }
           }
         }
@@ -140,7 +184,6 @@ export default function SwipeTestScreen() {
   };
 
   const handleComplete = (finalSwipeData: SwipeData[]) => {
-    // stop sensors
     const sensorData = sensorService.stopRecording();
     setIsRecording(false);
 
@@ -149,7 +192,6 @@ export default function SwipeTestScreen() {
       sensorData,
     };
 
-    // navigate to next enrollment step (passing data)
     router.push({
       pathname: '/enrollment/tap',
       params: {
@@ -159,9 +201,9 @@ export default function SwipeTestScreen() {
     });
   };
 
-  const getDirectionIcon = () => {
+  const getDirectionIcon = (size: number = 64) => {
     const direction = DIRECTIONS[currentDirection];
-    const iconProps = { size: 64, color: '#007AFF' };
+    const iconProps = { size, color: theme.accent.primary, strokeWidth: 2.5 };
 
     switch (direction) {
       case 'right':
@@ -177,41 +219,182 @@ export default function SwipeTestScreen() {
     }
   };
 
-  const progress = ((currentDirection * REQUIRED_SWIPES + swipeCount) / (DIRECTIONS.length * REQUIRED_SWIPES)) * 100;
+  const progress =
+    ((currentDirection * REQUIRED_SWIPES + swipeCount) /
+      (DIRECTIONS.length * REQUIRED_SWIPES)) *
+    100;
+
+  const averageSpeed = swipeData.length > 0
+    ? swipeData.reduce((sum, s) => sum + s.speed, 0) / swipeData.length
+    : 0;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.background.primary }]}>
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Swipe Test</Text>
-        <Text style={styles.subtitle}>
-          Direction: {DIRECTIONS[currentDirection].toUpperCase()}
-        </Text>
-        <Text style={styles.subtitle}>
-          Swipes: {swipeCount} / {REQUIRED_SWIPES}
-        </Text>
-        <View style={styles.progressBarContainer}>
-          <View style={[styles.progressBar, { width: `${progress}%` }]} />
+        <View style={styles.headerTop}>
+          <View
+            style={[
+              styles.iconBadge,
+              { backgroundColor: theme.accent.secondary + '20' },
+            ]}
+          >
+            <Move size={24} color={theme.accent.secondary} />
+          </View>
+          <Badge
+            text={`Step 2 of 4`}
+            variant="info"
+            size="medium"
+          />
         </View>
+
+        <Text style={[styles.title, { color: theme.text.primary }]}>
+          Swipe Dynamics
+        </Text>
+
+        <Text style={[styles.subtitle, { color: theme.text.secondary }]}>
+          Your swipe patterns reveal unique motor control signatures
+        </Text>
+
+        <ProgressBar progress={progress} style={styles.progressBar} />
+
+        {isRecording && (
+          <View style={styles.stats}>
+            <View style={styles.statItem}>
+              <Text style={[styles.statValue, { color: theme.accent.primary }]}>
+                {DIRECTIONS[currentDirection].toUpperCase()}
+              </Text>
+              <Text style={[styles.statLabel, { color: theme.text.tertiary }]}>
+                Direction
+              </Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statValue, { color: theme.accent.success }]}>
+                {swipeCount} / {REQUIRED_SWIPES}
+              </Text>
+              <Text style={[styles.statLabel, { color: theme.text.tertiary }]}>
+                Progress
+              </Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statValue, { color: theme.accent.warning }]}>
+                {averageSpeed.toFixed(1)}
+              </Text>
+              <Text style={[styles.statLabel, { color: theme.text.tertiary }]}>
+                Avg Speed
+              </Text>
+            </View>
+          </View>
+        )}
       </View>
 
+      {/* Content */}
       {!isRecording ? (
-        <View style={styles.instructions}>
-          <Text style={styles.instructionText}>
-            Swipe in each direction (→ ↓ ← ↑) three times each
-          </Text>
-          <TouchableOpacity style={styles.button} onPress={handleStart}>
-            <Text style={styles.buttonText}>Start Swipe Test</Text>
-          </TouchableOpacity>
+        <View style={styles.instructionsContainer}>
+          <Card variant="elevated" style={styles.instructionCard}>
+            <Text style={[styles.instructionTitle, { color: theme.text.primary }]}>
+              Swipe in 4 directions
+            </Text>
+            <View style={styles.directionGrid}>
+              {DIRECTIONS.map((dir, index) => (
+                <View
+                  key={dir}
+                  style={[
+                    styles.directionPreview,
+                    { backgroundColor: theme.background.tertiary },
+                  ]}
+                >
+                  {getDirectionIcon(32)}
+                  <Text
+                    style={[styles.directionLabel, { color: theme.text.secondary }]}
+                  >
+                    {dir.toUpperCase()}
+                  </Text>
+                </View>
+              ))}
+            </View>
+            <Text style={[styles.instructionText, { color: theme.text.secondary }]}>
+              Complete 3 swipes in each direction
+            </Text>
+          </Card>
+
+          <Button
+            title="Start Swipe Test"
+            onPress={handleStart}
+            variant="primary"
+            size="large"
+            icon={<Move size={20} color={theme.text.inverse} />}
+            style={styles.startButton}
+          />
+
+          <Card
+            variant="glass"
+            style={[
+              styles.tipCard,
+              { backgroundColor: theme.accent.secondary + '10' },
+            ]}
+          >
+            <Text style={[styles.tipText, { color: theme.text.secondary }]}>
+              💡 Swipe naturally and consistently for best results
+            </Text>
+          </Card>
         </View>
       ) : (
         <View style={styles.swipeArea} {...panResponder.panHandlers}>
-          <View style={styles.iconContainer}>{getDirectionIcon()}</View>
-          <Text style={styles.swipePrompt}>
-            Swipe {DIRECTIONS[currentDirection]}
-          </Text>
-          <Text style={styles.swipeCount}>
-            {swipeCount} / {REQUIRED_SWIPES}
-          </Text>
+          <Animated.View
+            style={[
+              styles.swipeZone,
+              {
+                backgroundColor: theme.background.secondary,
+                borderColor: theme.border.primary,
+                transform: [{ scale: pulseAnim }],
+              },
+            ]}
+          >
+            <View style={styles.iconContainer}>{getDirectionIcon()}</View>
+
+            <Text style={[styles.swipePrompt, { color: theme.text.primary }]}>
+              Swipe {DIRECTIONS[currentDirection]}
+            </Text>
+
+            <Text style={[styles.swipeCounter, { color: theme.accent.primary }]}>
+              {swipeCount} / {REQUIRED_SWIPES}
+            </Text>
+
+            {lastSwipeSpeed !== null && (
+              <Animated.View
+                style={[
+                  styles.feedbackBadge,
+                  {
+                    backgroundColor: theme.accent.success + '20',
+                    opacity: swipeIndicatorAnim,
+                  },
+                ]}
+              >
+                <Text style={[styles.feedbackText, { color: theme.accent.success }]}>
+                  ✓ {lastSwipeSpeed.toFixed(1)} px/ms
+                </Text>
+              </Animated.View>
+            )}
+          </Animated.View>
+
+          {/* Visual guide lines */}
+          <View style={styles.guideLines}>
+            <View
+              style={[
+                styles.guideLine,
+                styles.guideLineHorizontal,
+                { backgroundColor: theme.border.primary },
+              ]}
+            />
+            <View
+              style={[
+                styles.guideLine,
+                styles.guideLineVertical,
+                { backgroundColor: theme.border.primary },
+              ]}
+            />
+          </View>
         </View>
       )}
     </View>
@@ -221,82 +404,153 @@ export default function SwipeTestScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
-    padding: 20,
+    padding: spacing.lg,
+    paddingTop: spacing.xxxl,
   },
   header: {
-    marginTop: 40,
-    marginBottom: 32,
+    marginBottom: spacing.xl,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 8,
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 8,
-  },
-  progressBarContainer: {
-    height: 6,
-    backgroundColor: '#e0e0e0',
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginTop: 8,
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: '#007AFF',
-    borderRadius: 3,
-  },
-  instructions: {
-    flex: 1,
+  iconBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.md,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  instructionText: {
-    fontSize: 18,
-    color: '#666',
+  title: {
+    ...typography.h1,
+    marginBottom: spacing.sm,
+  },
+  subtitle: {
+    ...typography.body,
+    marginBottom: spacing.lg,
+    lineHeight: 24,
+  },
+  progressBar: {
+    marginBottom: spacing.lg,
+  },
+  stats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: spacing.md,
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statValue: {
+    ...typography.h2,
+    fontWeight: '800',
+  },
+  statLabel: {
+    ...typography.caption,
+    marginTop: spacing.xs,
+  },
+  instructionsContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: spacing.lg,
+  },
+  instructionCard: {
+    padding: spacing.xl,
+  },
+  instructionTitle: {
+    ...typography.h2,
+    marginBottom: spacing.lg,
     textAlign: 'center',
-    marginBottom: 32,
-    lineHeight: 27,
   },
-  button: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 12,
+  directionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-around',
+    gap: spacing.md,
+    marginBottom: spacing.lg,
   },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+  directionPreview: {
+    width: '45%',
+    aspectRatio: 1,
+    borderRadius: borderRadius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  directionLabel: {
+    ...typography.caption,
+    fontWeight: '700',
+  },
+  instructionText: {
+    ...typography.body,
+    textAlign: 'center',
+  },
+  startButton: {
+    width: '100%',
+  },
+  tipCard: {
+    padding: spacing.lg,
+  },
+  tipText: {
+    ...typography.bodySmall,
+    textAlign: 'center',
   },
   swipeArea: {
     flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    position: 'relative',
+  },
+  swipeZone: {
+    flex: 1,
+    borderRadius: borderRadius.xl,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 3,
-    borderColor: '#007AFF',
     borderStyle: 'dashed',
+    gap: spacing.lg,
   },
   iconContainer: {
-    marginBottom: 24,
+    marginBottom: spacing.md,
   },
   swipePrompt: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#1a1a1a',
-    marginBottom: 8,
+    ...typography.h2,
     textTransform: 'uppercase',
+    letterSpacing: 2,
   },
-  swipeCount: {
-    fontSize: 48,
+  swipeCounter: {
+    fontSize: 64,
+    fontWeight: '800',
+    letterSpacing: -2,
+  },
+  feedbackBadge: {
+    position: 'absolute',
+    top: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.full,
+  },
+  feedbackText: {
+    ...typography.h3,
     fontWeight: '700',
-    color: '#007AFF',
+  },
+  guideLines: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    pointerEvents: 'none',
+  },
+  guideLine: {
+    position: 'absolute',
+  },
+  guideLineHorizontal: {
+    width: '100%',
+    height: 1,
+    opacity: 0.3,
+  },
+  guideLineVertical: {
+    height: '100%',
+    width: 1,
+    opacity: 0.3,
   },
 });
